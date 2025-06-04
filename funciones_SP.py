@@ -6,7 +6,7 @@ Función conversión RGB to Luv
 @author: pcabe
 """
 import numpy as np
-
+import cv2
  
 
 #RGBrgb = pd.read_csv('RGB.csv', header=None).values    
@@ -21,8 +21,11 @@ def rgb2luv (RGBrgb):
     vn = 0.4683
     
        
-    XYZ = np.array([[0.490, 0.310, 0.200], [0.17697, 0.8124, 0.01063], [0.000, 0.010, 0.990]])
+    #XYZ = np.array([[0.490, 0.310, 0.200], [0.17697, 0.8124, 0.01063], [0.000, 0.010, 0.990]])
+    XYZ = np.array([[0.4124, 0.3576, 0.1805], [0.21026, 0.7152, 0.0722], [0.0193, 0.1192, 0.9505]])
+    
     XYZoriginal = RGBrgb @ np.transpose(XYZ)
+    
     # Matrices X,Y,Z
     X = XYZoriginal[:,0]
     Y = XYZoriginal[:,1]
@@ -45,7 +48,8 @@ def rgb2luv (RGBrgb):
     v = 13*L * (vprima-vn)
         
     teta = np.arctan2(v,u)
-    saturation = np.sqrt((uprima-un)**2+(vprima-vn)**2)
+    # El *13 se la mete luego
+    saturation = np.sqrt((uprima-un)**2+(vprima-vn)**2) 
     
     
     return L,u,v,teta,saturation
@@ -67,6 +71,7 @@ def otsun (histLuv):
     omega = np.cumsum(p)   # Suma acumulativa
     mu = np.cumsum(p * np.arange(1,num_bins+1))
     mu_t = mu[-1]
+ 
     
     # Evitar divisiones por 0 con np.errstate
     
@@ -86,48 +91,17 @@ def otsun (histLuv):
     return level
 
     
-def noisy(noise_typ,image):
-        
-        
-       if noise_typ == "gauss":
-          row,col,ch= image.shape
-          mean = 0
-          var = 0.1
-          sigma = var**0.5
-          gauss = np.random.normal(mean,sigma,(row,col,ch))
-          gauss = gauss.reshape(row,col,ch)
-          noisy = image + gauss
-          return noisy
-       elif noise_typ == "s&p":
-          row,col,ch = image.shape
-          s_vs_p = 0.5
-          amount = 0.004
-          out = np.copy(image)
-          # Salt mode
-          num_salt = np.ceil(amount * image.size * s_vs_p)
-          coords = [np.random.randint(0, i - 1, int(num_salt))
-                  for i in image.shape]
-          out[coords] = 1
+def escalaImg(img,factor):
+    """
+      Escala imagenes por factor, para dimensionar a tamaño ventana cv2
+      y interpolación de sus valores
+    """
+    width = int(img.shape[1] * factor )
+    height = int(img.shape[0] * factor)
+    dim = (width, height)
+    s_img = cv2.resize(img, dim, interpolation=cv2.INTER_AREA)
     
-          # Pepper mode
-          num_pepper = np.ceil(amount* image.size * (1. - s_vs_p))
-          coords = [np.random.randint(0, i - 1, int(num_pepper))
-                  for i in image.shape]
-          out[coords] = 0
-          return out
-       elif noise_typ == "poisson":
-          vals = len(np.unique(image))
-          vals = 2 ** np.ceil(np.log2(vals))
-          noisy = np.random.poisson(image * vals) / float(vals)
-          return noisy
-       elif noise_typ =="speckle":
-          row,col,ch = image.shape
-          gauss = np.random.randn(row,col,ch)
-          gauss = gauss.reshape(row,col,ch)        
-          noisy = image + image * gauss
-          return noisy
-    
-    
+    return s_img
     
     
     
