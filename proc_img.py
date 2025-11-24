@@ -12,8 +12,8 @@ import matplotlib.pyplot as plt
 from funciones_SP import rgb2luv
 from funciones_SP import otsun
 from funciones_SP import escalaImg
+from funciones_SP import RGB2labP
 
-from scipy import signal
 from scipy.stats import skew 
 from scipy.stats import kurtosis 
 
@@ -22,8 +22,86 @@ from skimage import color
 #from skimage.filters import threshold_otsu 
 
 
+###### TENER EN CUENTA
+import warnings
+from sklearn.exceptions import InconsistentVersionWarning
+warnings.filterwarnings("ignore", category=InconsistentVersionWarning)
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+#######################################################
+
+def predecir (featuresSVM, support_vectors, dual_coef, intercept, gamma, classes, scaler_mean, scaler_scale, n_support):
+    # === Escalar ===
+    X = (featuresSVM - scaler_mean) / scaler_scale
+    X = X.reshape(1, -1)
+
+    # === Ínidices ===
+    sv_class_idx = []
+    start = 0
+    for count in n_support:
+        sv_class_idx.append((start, start + count))
+        start += count
+
+    votes = np.zeros(len(classes), dtype=int)
+
+    # === Clasificador 1 vs 2 ===
+    i_start, i_end = sv_class_idx[0]
+    j_start, j_end = sv_class_idx[1]
+
+    sv = np.vstack([support_vectors[i_start:i_end], support_vectors[j_start:j_end]])
+    coef = dual_coef[0, :len(sv)]
+    K = np.exp(-gamma * np.sum((sv - X)**2, axis=1))
+    decision12 = np.sum(coef * K) + intercept[0]
+
+    if decision12 > 0:
+        votes[0] += 1
+    else:
+        votes[1] += 1
+
+    # === Clasificador 1 vs 3 ===
+    i_start, i_end = sv_class_idx[0]
+    k_start, k_end = sv_class_idx[2]
+
+    sv = np.vstack([support_vectors[i_start:i_end], support_vectors[k_start:k_end]])
+    coef = dual_coef[1, :len(sv)]
+    K = np.exp(-gamma * np.sum((sv - X)**2, axis=1))
+    decision13 = np.sum(coef * K) + intercept[1]
+
+    if decision13 > 0:
+        votes[0] += 1
+    else:
+        votes[2] += 1
+
+    # === Clasificador 2 vs 3: combinación ===
+    # sklearn: decision23 = decision13 - decision12
+    decision23 = decision13 - decision12
+
+    if decision23 > 0:
+        votes[1] += 1
+    else:
+        votes[2] += 1
+
+            
+    pred_class = classes[np.argmax(votes)]
+
+    # === Mapping igual que sklearn ===
+    mapping = {
+        1: "superficial",
+        2: "mixto",
+        3: "profundo"
+    }
+
+    clase = mapping.get(pred_class, "desconocida")
+    
+    return clase
+
+
+
+
+
+
+
 # Lectura Imagen
-#l_img = cv2.imread("C:/Users/pcabe/tfg/imagen8.jpg")
+#l_img = cv2.imread("C:/Users/pcabe/tfg/imagenes/imagen8.jpg")
 l_img = cv2.imread("C:/Users/pcabe/tfg/imagenes/heman_sup.jpg")
 
 
@@ -201,14 +279,14 @@ RGBfinal_g = imgGr_vect.copy()
 RGBfinal_b = imgBr_vect.copy()
 
 
-RGBfinal_r[ind] = 1.0
-RGBfinal_g[ind] = 1.0
-RGBfinal_b[ind] = 1.0
+RGBfinal_r[ind] = 1.0 + 1e-6
+RGBfinal_g[ind] = 1.0 + 1e-6
+RGBfinal_b[ind] = 1.0 + 1e-6
 
 
-RGBfinal_r[~color_mask] = 1.0
-RGBfinal_g[~color_mask] = 1.0
-RGBfinal_b[~color_mask] = 1.0
+RGBfinal_r[~color_mask] = 1.0 + 1e-6
+RGBfinal_g[~color_mask] = 1.0 + 1e-6
+RGBfinal_b[~color_mask] = 1.0 + 1e-6
 
 
 # Crear máscara booleana con valores que son hemangioma
@@ -247,11 +325,15 @@ RGB_normalizado = RGB_indice
 
 # 3. Convertir a L*a*b*
 Lab_final = color.rgb2lab(RGB_normalizado)
+Lab_pablo = RGB2labP(RGB_normalizado)
+
 
 # 4. Separar canales
 L_lab_final = Lab_final[:, 0]  # L*
 a_final = Lab_final[:, 1]  # a*
 b_final = Lab_final[:, 2]  # b*
+
+L_pablo = Lab_pablo[:, 2]  
 
 
 
@@ -307,11 +389,113 @@ data = [
 # Convertir a DataFrame
 df = pd.DataFrame(data)
 
+
 # Guardar en CSV (modo 'a' para agregar datos sin sobrescribir)
 csv_file = "resultados.csv"
 df.to_csv(csv_file, index=False, mode='a', header=not pd.io.common.file_exists(csv_file))
 
-print(f"Datos guardados en {csv_file}")
+#print(f"Datos guardados en {csv_file}")
+caracteristicas = np.array(list(data[0].values()))
+
+indexSVM = np.array([4,5,6,9,10,11,12,13])
+featuresSVM = caracteristicas[indexSVM]
+
+#print(featuresSVM)
+
+
+
+
+
+import joblib
+
+## MÉTODO 1
+svm_model = joblib.load('modelo/modelo_entrenado.pkl')
+scaler = joblib.load('modelo/scaler_entrenado.pkl')
+featuresSVM = featuresSVM.reshape(1, -1)
+muestra_escalada = scaler.transform(featuresSVM)
+prediccion = svm_model.predict(muestra_escalada)
+# Mapear la predicción a texto
+mapping = {1: "superficial", 2: "mixto", 3: "profundo"}
+"""
+clase = mapping.get(prediccion[0], "desconocida")
+print("--MÉTODO SKLEARN--")
+print("Clase:", clase)
+"""
+#### MÉTODO 2
+print("--MÉTODO MANUAL--")
+# === Cargar todo ===
+support_vectors = np.load('ModeloNp/support_vectors.npy')
+dual_coef = np.load('ModeloNp/dual_coef.npy')
+intercept = np.load('ModeloNp/intercept.npy')
+n_support = np.load('ModeloNp/n_support.npy')
+classes = np.load('ModeloNp/classes.npy')
+gamma = np.load('ModeloNp/gamma.npy')[0]
+
+scaler_mean = np.load('ModeloNp/scaler_mean.npy')
+scaler_scale = np.load('ModeloNp/scaler_scale.npy')
+
+# === Cargar modelo OneClassSVM desde numpy ===
+support_vectors_ocsvm = np.load("ModeloNp_OCSVM/support_vectors.npy")
+dual_coef_ocsvm = np.load("ModeloNp_OCSVM/dual_coef.npy")
+intercept_ocsvm = np.load("ModeloNp_OCSVM/intercept.npy")
+n_support_ocsvm = np.load("ModeloNp_OCSVM/n_support.npy")
+gamma_ocsvm = np.load("ModeloNp_OCSVM/gamma.npy")[0]
+
+scaler_mean_ocsvm = np.load("ModeloNp_OCSVM/scaler_mean.npy")
+scaler_scale_ocsvm = np.load("ModeloNp_OCSVM/scaler_scale.npy")
+
+
+"""
+tipo = predecir(featuresSVM, support_vectors, dual_coef, intercept, 
+                gamma, classes, scaler_mean, scaler_scale, n_support)
+
+print("Clase:", tipo)
+
+"""
+# === Predecir Hemangioma / No Hemangioma ===
+X = (featuresSVM - scaler_mean_ocsvm) / scaler_scale_ocsvm
+X = X.reshape(1, -1)
+
+# Kernel RBF entre muestra y vectores de soporte
+K = np.exp(-gamma_ocsvm * np.sum((support_vectors_ocsvm - X) ** 2, axis=1))
+
+decision_value = np.dot(dual_coef_ocsvm.flatten(), K) + intercept_ocsvm
+pred_ocsvm = np.sign(decision_value)
+
+if pred_ocsvm == 1:
+    print("==== CLASIFICACIÓN PREVIA ====")
+    print("No Hemangioma")
+else:
+    print("==== CLASIFICACIÓN PREVIA ====")
+    print("Hemangioma")
+    
+    # Si es Hemangioma, hacemos la clasificación multiclase normal
+    print("--MÉTODO SKLEARN--")
+    svm_model = joblib.load('modelo/modelo_entrenado.pkl')
+    scaler = joblib.load('modelo/scaler_entrenado.pkl')
+    muestra_escalada = scaler.transform(featuresSVM.reshape(1, -1))
+    prediccion = svm_model.predict(muestra_escalada)
+    mapping = {1: "superficial", 2: "mixto", 3: "profundo"}
+    clase = mapping.get(prediccion[0], "desconocida")
+    print("Clase:", clase)
+
+    print("--MÉTODO MANUAL--")
+    support_vectors = np.load('ModeloNp/support_vectors.npy')
+    dual_coef = np.load('ModeloNp/dual_coef.npy')
+    intercept = np.load('ModeloNp/intercept.npy')
+    n_support = np.load('ModeloNp/n_support.npy')
+    classes = np.load('ModeloNp/classes.npy')
+    gamma = np.load('ModeloNp/gamma.npy')[0]
+    scaler_mean = np.load('ModeloNp/scaler_mean.npy')
+    scaler_scale = np.load('ModeloNp/scaler_scale.npy')
+
+    tipo = predecir(featuresSVM, support_vectors, dual_coef, intercept,
+                    gamma, classes, scaler_mean, scaler_scale, n_support)
+    print("Clase:", tipo)
+
+
+
+
 
 
 

@@ -1,14 +1,12 @@
-import cv2
+import cv2 as cv
 import numpy as np
 
-# Leer la imagen en escala de grises (2D)
-img = cv2.imread("C:/Users/pcabe/tfg/imagenes/heman_sup.jpg", cv2.IMREAD_GRAYSCALE)
+# 1️⃣ Cargar imagen JPEG en escala de grises
+img = cv.imread('imagenes/heman_sup.JPG', cv.IMREAD_GRAYSCALE)  # 8 bits, 1 canal
 
-# Convertir a uint16 con escala
-img_uint16 = np.uint16(img) * 256  # 0-255 → 0-65535
+# 2️⃣ Convertir a 16 bits simulados
+# Escalamos de 0-255 a 0-65535
+img_16bit = np.uint16(img) * 257  # 255 * 257 ≈ 65535
 
-# Ver rango para depuración
-print("Mín:", img_uint16.min(), "Máx:", img_uint16.max())
-
-# Guardar en formato binario crudo
-img_uint16.tofile("bin/23_03_2023__12_31_26_ir.bin")
+# 3️⃣ Guardar como .bin (RAW)
+img_16bit.tofile('mi_foto_fake_raw.bin')

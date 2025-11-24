@@ -12,13 +12,13 @@ import matplotlib.pyplot as plt
 from funciones_SP import rgb2luv
 from funciones_SP import otsun
 from funciones_SP import escalaImg
+from funciones_SP import RGB2labP
 
-from scipy import signal
-from scipy.stats import skew 
-from scipy.stats import kurtosis 
+from funciones_SP import kurtP
+from funciones_SP import skewP
 
-import pandas as pd
-from skimage import color
+
+
 
 def getFeatures (r_img):  
     # Normalización
@@ -74,7 +74,7 @@ def getFeatures (r_img):
 
     ###   MÁSCARA
 
-    lab_img = color.rgb2lab(img)  # img ya está normalizada (rango [0, 1])
+    lab_img = RGB2labP(img)  # img ya está normalizada (rango [0, 1])
 
     # Aplanamos los canales LAB
     L_flat = lab_img[:, :, 0].reshape(Mr, 1)
@@ -137,12 +137,14 @@ def getFeatures (r_img):
     RGB_normalizado = RGB_indice 
 
     # 3. Convertir a L*a*b*
-    Lab_final = color.rgb2lab(RGB_normalizado)
+    Lab_final = RGB2labP(RGB_normalizado)
 
     # 4. Separar canales
     L_lab_final = Lab_final[:, 0]  # L*
     a_final = Lab_final[:, 1]  # a*
     b_final = Lab_final[:, 2]  # b*
+    
+    
 
 
     data = [
@@ -164,14 +166,14 @@ def getFeatures (r_img):
          "Std a": np.std(a_final, ddof=1),
          "Std b": np.std(b_final, ddof=1),
          
-         "Skew L": skew(Lfinal, bias=False),
-         "Kurt L": kurtosis(Lfinal, fisher=False, bias=False),
+         "Skew L": skewP(Lfinal),
+         "Kurt L": kurtP(Lfinal),
          
-         "Skew a": skew(a_final, bias=False),
-         "Kurt a": kurtosis(a_final, fisher=False, bias=False),
+         "Skew a": skewP(a_final),
+         "Kurt a": kurtP(a_final),
          
-         "Skew b": skew(b_final, bias=False),
-         "Kurt b": kurtosis(b_final, fisher=False, bias=False),
+         "Skew b": skewP(b_final),
+         "Kurt b": kurtP(b_final),
          
          "Media Theta Circular":  0.5 * np.arctan2(np.mean(np.sin(2*np.pi*tetafinal)), np.mean(np.cos(2*np.pi*tetafinal))),  
          
@@ -181,11 +183,11 @@ def getFeatures (r_img):
          "Std u": np.std(ufinal, ddof=1),
          "Std v": np.std(vfinal, ddof=1),
          
-         "Skew u": skew(ufinal, bias=False),
-         "Kurt u": kurtosis(ufinal, fisher=False, bias=False),
+         "Skew u": skewP(ufinal),
+         "Kurt u": kurtP(ufinal),
          
-         "Skew v": skew(vfinal, bias=False),
-         "Kurt v": kurtosis(vfinal, fisher=False, bias=False)
+         "Skew v": skewP(vfinal),
+         "Kurt v": kurtP(vfinal)
         }
     ]
     caracteristicas = np.array(list(data[0].values()))
